@@ -47,6 +47,30 @@ streamlit run app.py.
 ```
 + Visit localhost:8501 on your web browser to access the web app.
 
+## Database (MongoDB)
+This project can store user accounts and message history in MongoDB. By default the app tries to connect to `mongodb://localhost:27017`.
+
+Steps to enable MongoDB history:
+
+- Create a `.env` file at the project root (or set `MONGO_URI` in your shell). You can copy the example file:
+
+```
+cp .env.example .env
+```
+
+- If you want a local MongoDB server, install and run MongoDB (on Ubuntu):
+
+```bash
+sudo apt update
+sudo apt install -y mongodb
+sudo systemctl start mongodb
+sudo systemctl enable mongodb
+```
+
+- Or use MongoDB Atlas: create a free cluster and paste the provided connection string into `MONGO_URI` in `.env`.
+
+The Streamlit app will show a Sign up / Login flow and will save message predictions to the `history` collection for the logged-in user.
+
 ## Contributions
 Contributions to this project are welcome. If you find any issues or have any suggestions for improvement, please open an issue or a pull request on this repository.
 
