@@ -40,57 +40,130 @@ To use the SMS Spam Detection model on your own machine, follow these steps:
 + Install the required Python packages using 
 ```
 pip install -r requirements.txt.
-```
-+ Run the model using 
-```
-streamlit run app.py.
-```
-+ Visit localhost:8501 on your web browser to access the web app.
-## Deploying to Render (Docker)
+# SMS Spam Detection
 
-You can deploy this Streamlit app to Render using the included `Dockerfile`. Steps:
+A simple Streamlit app that predicts whether an SMS is spam or not using a pretrained scikit-learn model. This project includes a lightweight signup/login flow and per-user prediction history stored in MongoDB (with an in-memory fallback when Mongo is not configured).
 
-1. Push this repository to a GitHub repository.
-2. On Render (https://render.com) create a new **Web Service** and connect your GitHub repo.
-3. Choose **Docker** as the environment (Render will detect the `Dockerfile`).
-4. Set the build and start settings (Render will use the Dockerfile):
-	- Environment: `Docker`
-	- No additional build command required.
-5. Add environment variables in the Render dashboard (optional but recommended):
-	- `MONGO_URI` — your MongoDB Atlas or other Mongo connection string.
-6. Deploy. Render will build the Docker image and run the container; the app will be available at the Render-provided URL.
+This repository contains:
+- `app.py` — Streamlit application with signup/login and prediction UI.
+- `db.py` — Database helpers: connects to MongoDB (if `MONGO_URI` provided) and falls back to an in-memory store when unavailable.
+- `vectorizer.pkl`, `model.pkl` — pretrained model artifacts (must be provided by you).
+- `Dockerfile` and `render.yaml` — for containerized deployment (Render or other Docker hosts).
+- `scripts/create_test_user.py` — convenience script to seed a test user.
 
-Notes:
-- The `Dockerfile` pre-installs Python dependencies and downloads required NLTK data so the container does not need to download them at runtime.
-- The Docker container uses the `PORT` environment variable provided by Render. Streamlit is started in headless mode.
-- Make sure `model.pkl` and `vectorizer.pkl` are committed to the repo so Render can include them in the image.
-- For production use, host MongoDB securely (MongoDB Atlas) and set `MONGO_URI` to point at it. Avoid exposing an unsecured local MongoDB to the internet.
+## Features
+- Spam detection using a pretrained scikit-learn model.
+- Signup and login with password hashing (`werkzeug.security`).
+- Per-user prediction history persisted to MongoDB (collection: `history`) when `MONGO_URI` is configured; otherwise stored in memory for the current session.
+- Robust startup handling for NLTK resources (the app attempts to download missing data; Dockerfile pre-downloads them in the image).
 
-## Database (MongoDB)
-This project can store user accounts and message history in MongoDB. By default the app tries to connect to `mongodb://localhost:27017`.
+## Quickstart (local)
 
-Steps to enable MongoDB history:
-
-- Create a `.env` file at the project root (or set `MONGO_URI` in your shell). You can copy the example file:
-
-```
-cp .env.example .env
-```
-
-- If you want a local MongoDB server, install and run MongoDB (on Ubuntu):
+1. Clone the repo and create a Python virtual environment:
 
 ```bash
-sudo apt update
-sudo apt install -y mongodb
-sudo systemctl start mongodb
-sudo systemctl enable mongodb
+git clone <your-repo-url>
+cd SMS-Spam-Detection-Model
+python -m venv .venv
+source .venv/bin/activate
 ```
 
-- Or use MongoDB Atlas: create a free cluster and paste the provided connection string into `MONGO_URI` in `.env`.
+2. Install dependencies:
 
-The Streamlit app will show a Sign up / Login flow and will save message predictions to the `history` collection for the logged-in user.
+```bash
+pip install -r requirements.txt
+```
 
-## Contributions
-Contributions to this project are welcome. If you find any issues or have any suggestions for improvement, please open an issue or a pull request on this repository.
+3. Add model artifacts:
+
+Place `model.pkl` and `vectorizer.pkl` in the project root. The app will fail to predict without these files.
+
+4. (Optional) Configure MongoDB:
+
+If you want persistent history across restarts, set `MONGO_URI` in environment variables or a `.env` file. An example `.env.example` is included.
+
+```bash
+cp .env.example .env
+# edit .env and set MONGO_URI to your connection string
+```
+
+If `MONGO_URI` is not set or MongoDB is unreachable, the app uses an in-memory fallback (history will not persist after restart).
+
+5. Run the app locally:
+
+```bash
+streamlit run app.py
+```
+
+Open http://localhost:8501 in your browser.
+
+## Create a test user (skip UI signup)
+
+Use the helper script to create a user in MongoDB or in-memory (depending on `MONGO_URI`):
+
+```bash
+python scripts/create_test_user.py --username testuser --password secret
+```
+
+## Deploy with Docker (Render or other hosts)
+
+A `Dockerfile` is included to produce a reproducible container image. The image pre-installs dependencies and pre-downloads necessary NLTK data.
+
+Build and run locally:
+
+```bash
+# build
+docker build -t sms-spam-app .
+# run
+docker run -p 8501:8501 -e PORT=8501 sms-spam-app
+```
+
+### Deploy to Render
+
+- Push the repository to GitHub.
+- On Render, create a new **Web Service** and connect your repo.
+- Select **Docker** as the environment so Render uses the included `Dockerfile`.
+- Optionally set the Start Command (the Dockerfile already defines a CMD):
+
+```
+streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+```
+
+- Add environment variables in the Render dashboard (recommended):
+	- `MONGO_URI` — MongoDB connection string (Atlas or other).
+	- Optionally `SECRET_KEY`, `PYTHONUNBUFFERED=1`.
+
+The repo includes `render.yaml` which can be used to preconfigure a Render service.
+
+## Environment variables
+- `MONGO_URI` — (optional) MongoDB connection string. If unset or unreachable the app uses an in-memory fallback.
+- `PORT` — provided by hosts like Render; Streamlit command uses `$PORT`.
+- `PYTHONUNBUFFERED` — optional; set to `1` to keep logs unbuffered.
+- `SECRET_KEY` — optional secret for future session/cookie features.
+
+## Notes and security
+- Use a managed MongoDB provider (like MongoDB Atlas) in production; do not expose local MongoDB to the public internet.
+- Keep credentials out of source control — use platform secrets or environment variables.
+- Ensure `model.pkl` and `vectorizer.pkl` are present in the repo when deploying.
+
+## Troubleshooting
+- NLTK LookupError on startup: run the following locally to fetch missing data:
+
+```bash
+python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('punkt_tab')"
+```
+
+- If the app fails to connect to MongoDB at runtime, it will automatically fall back to an in-memory store. Check your `MONGO_URI` and network settings if you expect persistent storage.
+
+## Development notes
+- `db.py` centralizes DB behavior. It attempts to connect to MongoDB and sets an internal state; all helper functions gracefully fall back to session-level storage when Mongo is not available.
+- `app.py` implements the Streamlit UI, including authentication and the prediction workflow. It uses `transform_text()` for preprocessing (NLTK + PorterStemmer) and loads the pretrained `vectorizer.pkl` and `model.pkl`.
+
+## Contributing
+Contributions are welcome. Open an issue or a pull request with proposed changes.
+
+---
+
+If you'd like, I can also prepare a minimal GitHub Actions workflow to build the Docker image and push to a container registry automatically when you push to `main`.
 
 
