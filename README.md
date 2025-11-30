@@ -46,6 +46,25 @@ pip install -r requirements.txt.
 streamlit run app.py.
 ```
 + Visit localhost:8501 on your web browser to access the web app.
+## Deploying to Render (Docker)
+
+You can deploy this Streamlit app to Render using the included `Dockerfile`. Steps:
+
+1. Push this repository to a GitHub repository.
+2. On Render (https://render.com) create a new **Web Service** and connect your GitHub repo.
+3. Choose **Docker** as the environment (Render will detect the `Dockerfile`).
+4. Set the build and start settings (Render will use the Dockerfile):
+	- Environment: `Docker`
+	- No additional build command required.
+5. Add environment variables in the Render dashboard (optional but recommended):
+	- `MONGO_URI` — your MongoDB Atlas or other Mongo connection string.
+6. Deploy. Render will build the Docker image and run the container; the app will be available at the Render-provided URL.
+
+Notes:
+- The `Dockerfile` pre-installs Python dependencies and downloads required NLTK data so the container does not need to download them at runtime.
+- The Docker container uses the `PORT` environment variable provided by Render. Streamlit is started in headless mode.
+- Make sure `model.pkl` and `vectorizer.pkl` are committed to the repo so Render can include them in the image.
+- For production use, host MongoDB securely (MongoDB Atlas) and set `MONGO_URI` to point at it. Avoid exposing an unsecured local MongoDB to the internet.
 
 ## Database (MongoDB)
 This project can store user accounts and message history in MongoDB. By default the app tries to connect to `mongodb://localhost:27017`.
