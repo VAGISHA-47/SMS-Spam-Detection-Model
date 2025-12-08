@@ -5,12 +5,12 @@
 services:
   - type: web
     name: sms-spam-detection
-    env: docker
+    env: python
     branch: main
     plan: free
-    buildCommand: ""
+    buildCommand: "pip install -r requirements.txt && python -m nltk.downloader punkt stopwords wordnet omw-1.4"
     startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
-      - key: MONGO_URI
-        value: ""
+      - key: NEON_DB_URL
+        value: "postgresql://neondb_owner:npg_ocme2luH0EXi@ep-snowy-bonus-a1qvcgqe-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
         sync: false
