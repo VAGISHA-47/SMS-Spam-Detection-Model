@@ -6,7 +6,6 @@ services:
   - type: web
     name: sms-spam-detection
     env: python
-    runtime: python-3.12.1
     branch: main
     plan: free
     buildCommand: "pip install -r requirements.txt && python -m nltk.downloader punkt stopwords wordnet omw-1.4"
