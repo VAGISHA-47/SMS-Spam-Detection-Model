@@ -3,10 +3,36 @@ st.set_page_config(page_title='SMS Spam Detection', layout='wide')
 import os
 import datetime
 import nltk
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('omw-1.4')
+
+# Download NLTK data with proper error handling
+@st.cache_resource
+def download_nltk_data():
+    try:
+        # Try newer punkt_tab first (NLTK 3.9+)
+        try:
+            nltk.data.find('tokenizers/punkt_tab')
+        except LookupError:
+            nltk.download('punkt_tab', quiet=True)
+        
+        # Fallback to older punkt
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt', quiet=True)
+        
+        # Download other required data
+        for package in ['stopwords', 'wordnet', 'omw-1.4']:
+            try:
+                nltk.data.find(f'corpora/{package}')
+            except LookupError:
+                nltk.download(package, quiet=True)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error downloading NLTK data: {e}")
+        return False
+
+download_nltk_data()
 
 # Project base dir
 from pathlib import Path
@@ -21,10 +47,18 @@ model = joblib.load(model_path)
 
 # Neon DB (PostgreSQL) connection
 from neon_db import create_user, authenticate_user, save_prediction, get_user_predictions, init_db
-try:
-    init_db()
-except Exception as e:
-    st.error(f"Failed to initialize database: {e}")
+
+# Check if database is configured
+DB_CONFIGURED = bool(os.getenv("NEON_DB_URL"))
+
+if DB_CONFIGURED:
+    try:
+        init_db()
+    except Exception as e:
+        st.warning(f"Database connection issue: {e}")
+        DB_CONFIGURED = False
+else:
+    st.warning("⚠️ Database not configured. Set NEON_DB_URL in Streamlit secrets to enable user accounts and history.")
 
 # Helper function
 from train_model import transform_text
@@ -41,9 +75,12 @@ st.title("SMS Spam Detection")
 with st.sidebar:
     st.markdown("## 🔒 Account")
     st.markdown("---")
-    st.markdown("**Sign in or create an account to use the SMS Spam Detector and view your prediction history.**")
+    if not DB_CONFIGURED:
+        st.info("Database not configured. Using demo mode without accounts.")
+    else:
+        st.markdown("**Sign in or create an account to use the SMS Spam Detector and view your prediction history.**")
     st.markdown("")
-    if not st.session_state['logged_in']:
+    if not st.session_state['logged_in'] and DB_CONFIGURED:
         auth_choice = st.radio("Select action:", ["Login", "Sign up"])
         st.markdown("")
         email = st.text_input("Email", key="sidebar_email").strip().lower()
@@ -62,7 +99,7 @@ with st.sidebar:
                         # Auto-login after signup
                         st.session_state['logged_in'] = True
                         st.session_state['user_email'] = email
-                        st.experimental_rerun()
+                        st.rerun()
         else:
             if st.button("Log in", key="login_btn"):
                 if not email or not password:
@@ -70,18 +107,23 @@ with st.sidebar:
                 elif authenticate_user(email, password):
                     st.session_state['logged_in'] = True
                     st.session_state['user_email'] = email
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid credentials")
-    else:
+    elif st.session_state['logged_in'] and DB_CONFIGURED:
         st.success(f"Signed in as: {st.session_state['user_email']}")
         st.markdown("")
         if st.button("Log out", key="logout_btn"):
             st.session_state['logged_in'] = False
             st.session_state['user_email'] = None
-            st.experimental_rerun()
+            st.rerun()
 
-if not st.session_state['logged_in']:
+# Allow usage without login if DB is not configured (demo mode)
+if not DB_CONFIGURED:
+    st.session_state['logged_in'] = True
+    st.session_state['user_email'] = 'demo@user.com'
+
+if not st.session_state['logged_in'] and DB_CONFIGURED:
     st.info("Please sign in or create an account from the left sidebar to use the predictor and view your history.")
     st.stop()
 
@@ -100,7 +142,7 @@ with col2:
     st.markdown("")
     if st.button('🔄 Clear', key="clear_btn", help="Clear the SMS input"):
         st.session_state['clear_sms'] = True
-        st.experimental_rerun()
+        st.rerun()
 
 # Reset the clear flag after rerun
 if st.session_state['clear_sms']:
@@ -134,41 +176,43 @@ if st.button('Predict'):
             else:
                 st.write(steps)
         
-        try:
-            save_prediction(
-                st.session_state['user_email'],
-                input_sms,
-                transformed_sms,
-                steps,
-                int(result),
-                label
-            )
-            st.success('Prediction saved to your history')
-        except Exception as e:
-            st.error(f'Failed to save prediction to DB: {e}')
+        if DB_CONFIGURED:
+            try:
+                save_prediction(
+                    st.session_state['user_email'],
+                    input_sms,
+                    transformed_sms,
+                    steps,
+                    int(result),
+                    label
+                )
+                st.success('Prediction saved to your history')
+            except Exception as e:
+                st.error(f'Failed to save prediction to DB: {e}')
 
 # --- User History ---
-st.subheader('Your History')
-if st.session_state.get('logged_in') and st.session_state.get('user_email'):
-    try:
-        items = get_user_predictions(st.session_state['user_email'], limit=50)
-        if not items:
-            st.info('No prediction history found for your account.')
-        else:
-            # Create table data
-            table_data = []
-            for it in items:
-                table_data.append({
-                    'SMS Text': it.get('text', '')[:100],  # Truncate long text
-                    'Prediction': it.get('label', 'n/a').upper(),
-                    'Date & Time': str(it.get('timestamp', ''))
-                })
-            
-            # Display as table
-            import pandas as pd
-            df = pd.DataFrame(table_data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-    except Exception as e:
-        st.error(f'Failed to load history: {e}')
-else:
-    st.info('Please log in to view your prediction history.')
+if DB_CONFIGURED:
+    st.subheader('Your History')
+    if st.session_state.get('logged_in') and st.session_state.get('user_email') and st.session_state['user_email'] != 'demo@user.com':
+        try:
+            items = get_user_predictions(st.session_state['user_email'], limit=50)
+            if not items:
+                st.info('No prediction history found for your account.')
+            else:
+                # Create table data
+                table_data = []
+                for it in items:
+                    table_data.append({
+                        'SMS Text': it.get('text', '')[:100],  # Truncate long text
+                        'Prediction': it.get('label', 'n/a').upper(),
+                        'Date & Time': str(it.get('timestamp', ''))
+                    })
+                
+                # Display as table
+                import pandas as pd
+                df = pd.DataFrame(table_data)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f'Failed to load history: {e}')
+    else:
+        st.info('Please log in to view your prediction history.')
