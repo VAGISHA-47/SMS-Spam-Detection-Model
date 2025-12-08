@@ -12,22 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     pip install --no-cache-dir -r requirements.txt && \
     apt-get remove -y build-essential && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Pre-download common NLTK data so runtime doesn't have to fetch it
-RUN python - <<'PY'
-import nltk
-try:
-    nltk.download('punkt', download_dir='/usr/share/nltk_data')
-except Exception:
-    pass
-try:
-    nltk.download('stopwords', download_dir='/usr/share/nltk_data')
-except Exception:
-    pass
-try:
-    nltk.download('punkt_tab', download_dir='/usr/share/nltk_data')
-except Exception:
-    pass
-PY
+# Pre-download NLTK data so runtime doesn't have to fetch it
+RUN python -m nltk.downloader -d /usr/share/nltk_data punkt stopwords wordnet omw-1.4 punkt_tab
 
 COPY . /app
 
