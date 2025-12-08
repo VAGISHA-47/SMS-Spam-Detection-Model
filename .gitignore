@@ -2,3 +2,13 @@ env
 sms-spam-detection-main.zip
 .ipynb_checkpoints
 sms-spam-detection-main
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
