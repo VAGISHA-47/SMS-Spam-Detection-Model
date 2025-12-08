@@ -1,0 +1,243 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMS Spam Detector</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; padding: 0; background:#f5f7fb }
+      .container { max-width:900px; margin:32px auto; background:white; padding:24px; border-radius:10px; box-shadow:0 4px 20px rgba(20,20,40,0.06) }
+      textarea { width:100%; min-height:120px; padding:12px; font-size:14px }
+      .row { display:flex; gap:12px; align-items:center }
+      button { background:#2563eb; color:white; border:none; padding:10px 16px; border-radius:8px }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-presets="env,react">
+      const { useState, useEffect, useRef } = React;
+
+      function App(){
+        const [text, setText] = useState('');
+        const [models, setModels] = useState([]);
+        const [selected, setSelected] = useState('model');
+        const [result, setResult] = useState(null);
+        const [realtime, setRealtime] = useState(false);
+        const socketRef = useRef(null);
+        const chartRef = useRef(null);
+        const dataCounts = useRef({ham:0, spam:0});
+
+        useEffect(()=>{ fetch('/models').then(r=>r.json()).then(j=>{ setModels(j.models); if(j.models[0]) setSelected(j.models[0]); }) },[]);
+
+        useEffect(()=>{
+          const ctx = document.getElementById('chart');
+          if(!ctx) return;
+          chartRef.current = new Chart(ctx, {
+            type: 'pie',
+            data: { labels:['Ham','Spam'], datasets:[{data:[0,0], backgroundColor:['#10b981','#ef4444']}] },
+            options: { responsive:true }
+          });
+
+          // Fetch metrics.json for dashboard and render metrics chart
+          fetch('/metrics').then(r=>{
+            if(!r.ok) return null; return r.json();
+          }).then(metrics=>{
+            if(!metrics) return;
+            try{
+              const report = metrics.classification_report || metrics.classification_report;
+              // report expected as dict with '0' and '1'
+              const ham = report['0'] || report['ham'] || {};
+              const spam = report['1'] || report['spam'] || {};
+              const labels = ['precision','recall','f1-score'];
+              const hamData = labels.map(l=> (ham[l] || 0)*1 );
+              const spamData = labels.map(l=> (spam[l] || 0)*1 );
+
+              const mctx = document.getElementById('metricsChart');
+              if(mctx){
+                new Chart(mctx, {
+                  type: 'bar',
+                  data: {
+                    labels,
+                    datasets:[
+                      { label: 'Ham', data: hamData, backgroundColor: '#10b981' },
+                      { label: 'Spam', data: spamData, backgroundColor: '#ef4444' }
+                    ]
+                  },
+                  options: { responsive:true, scales:{ y:{ beginAtZero:true, max:1 } } }
+                });
+              }
+            }catch(e){ console.warn('metrics parse err', e); }
+          }).catch(()=>{});
+        },[]);
+
+        useEffect(()=>{
+          if(realtime){
+            socketRef.current = io();
+            socketRef.current.on('prediction', p => { setResult(p); incrCounts(p); });
+          } else {
+            if(socketRef.current){ socketRef.current.disconnect(); socketRef.current = null; }
+          }
+          return ()=>{ if(socketRef.current){ socketRef.current.disconnect(); socketRef.current=null } }
+        },[realtime]);
+
+        function incrCounts(p){
+          if(!p) return;
+          const isSpam = p.prediction==1 || p.prediction==='1';
+          if(isSpam) dataCounts.current.spam +=1; else dataCounts.current.ham +=1;
+          const chart = chartRef.current;
+          if(chart){ chart.data.datasets[0].data = [dataCounts.current.ham, dataCounts.current.spam]; chart.update(); }
+        }
+
+        async function submit(){
+          if(!text) return;
+          if(realtime && socketRef.current){ socketRef.current.emit('sms',{text, model:selected}); return; }
+          const r = await fetch('/predict',{method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({text, model:selected})});
+          const j = await r.json();
+          setResult(j);
+          incrCounts(j);
+        }
+
+        const [history, setHistory] = useState([]);
+
+        useEffect(()=>{
+          // fetch history if available
+          fetch('/history').then(r=> r.ok ? r.json() : null).then(j=>{ if(j && j.items) setHistory(j.items); }).catch(()=>{});
+        },[]);
+
+        function formatDate(ts){
+          try{ const d = new Date(ts); return d.toLocaleString(); }catch(e){ return ts; }
+        }
+
+        return (
+          <div className="container">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <h2 style={{margin:0}}>SMS Spam Detector</h2>
+              <div style={{fontSize:12, color:'#666'}}>Realtime: <strong style={{color: realtime ? '#16a34a' : '#888'}}>{realtime ? 'ON' : 'OFF'}</strong></div>
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 320px', gap:16, marginTop:18}}>
+              <div>
+                <div style={{display:'flex', gap:12, marginBottom:8}}>
+                  <select value={selected} onChange={e=>setSelected(e.target.value)} style={{padding:8, borderRadius:8}}>
+                    {models.map(m=> <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <label style={{marginLeft:12, display:'flex', alignItems:'center', gap:8}}><input type="checkbox" checked={realtime} onChange={e=>setRealtime(e.target.checked)} /> Real-time</label>
+                </div>
+
+                <textarea placeholder="Type SMS here..." value={text} onChange={e=>setText(e.target.value)} style={{borderRadius:8, border:'1px solid #e6edf3', padding:12}} />
+                <div style={{display:'flex', marginTop:12, gap:12}}>
+                  <button onClick={submit}>Predict</button>
+                  <button onClick={()=>{ setText(''); setResult(null); }}>Clear</button>
+                </div>
+
+                {result && (
+                  <div style={{marginTop:18, padding:12, borderRadius:8, background:'#fbfdff', border:'1px solid #eef5ff'}}>
+                    <h4 style={{marginTop:0}}>Result</h4>
+                    <div style={{display:'flex', gap:12, alignItems:'center'}}>
+                      <div style={{flex:1}}>
+                        <div><strong>Prediction:</strong> {result.prediction==1 ? 'Spam' : 'Ham'}</div>
+                        <div><strong>Probabilities:</strong> {result.probabilities ? result.probabilities.map(p=>p.toFixed(3)).join(' / ') : 'N/A'}</div>
+                        <div style={{marginTop:8}}><strong>Transformed:</strong> {result.transformed}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{marginTop:18}}>
+                  <h4 style={{marginBottom:8}}>History</h4>
+                  <div style={{border:'1px solid #eef5ff', borderRadius:8, overflow:'hidden'}}>
+                    <table style={{width:'100%', borderCollapse:'collapse'}}>
+                      <thead style={{background:'#f8fafc'}}>
+                        <tr>
+                          <th style={{textAlign:'left', padding:8}}>When</th>
+                          <th style={{textAlign:'left', padding:8}}>Text</th>
+                          <th style={{padding:8}}>Pred</th>
+                          <th style={{padding:8}}>Prob</th>
+                          <th style={{padding:8}}>Steps</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((h, idx)=> (
+                          <HistoryRow key={String(h._id || idx)} row={h} />
+                        ))}
+                        {history.length===0 && (
+                          <tr><td colSpan={5} style={{padding:12}}>No history yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{padding:12, borderRadius:8, background:'#fff', border:'1px solid #eef5ff'}}>
+                  <h4 style={{marginTop:0}}>Live Counts</h4>
+                  <canvas id="chart" width="320" height="200"></canvas>
+                </div>
+
+                <div style={{marginTop:12, padding:12, borderRadius:8, background:'#fff', border:'1px solid #eef5ff'}}>
+                  <h4 style={{marginTop:0}}>Model Metrics</h4>
+                  <canvas id="metricsChart" width="320" height="180"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function HistoryRow({row}){
+        const [open, setOpen] = useState(false);
+        const predText = row.prediction==1 ? 'Spam' : 'Ham';
+        const prob = row.probabilities ? (Array.isArray(row.probabilities) ? row.probabilities[1] : null) : null;
+        return (
+          <>
+            <tr style={{borderBottom:'1px solid #f1f5f9'}}>
+              <td style={{padding:8, width:140}}>{new Date(row.ts).toLocaleString()}</td>
+              <td style={{padding:8}}>{row.text}</td>
+              <td style={{padding:8, textAlign:'center'}}>{predText}</td>
+              <td style={{padding:8, textAlign:'center'}}>{prob!=null ? (prob.toFixed ? prob.toFixed(3) : prob) : '-'}</td>
+              <td style={{padding:8, textAlign:'center'}}><button onClick={()=>setOpen(!open)} style={{padding:'6px 8px', borderRadius:6}}> {open ? 'Hide' : 'Show'} </button></td>
+            </tr>
+            {open && (
+              <tr><td colSpan={5} style={{background:'#fbfdff', padding:10}}>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                  <div>
+                    <strong>Tokens:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.steps && row.steps.tokens)||'N/A'}</div>
+                  </div>
+                  <div>
+                    <strong>Alpha Tokens:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.steps && row.steps.tokens_alpha)||'N/A'}</div>
+                  </div>
+                  <div>
+                    <strong>After Stopwords:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.steps && row.steps.after_stop)||'N/A'}</div>
+                  </div>
+                  <div>
+                    <strong>Lemmatized:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.steps && row.steps.after_lemmatize)||'N/A'}</div>
+                  </div>
+                  <div>
+                    <strong>Stemmed:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.steps && row.steps.after_stem)||'N/A'}</div>
+                  </div>
+                  <div>
+                    <strong>Transformed:</strong>
+                    <div style={{fontFamily:'monospace', whiteSpace:'pre-wrap'}}>{(row.transformed)||'N/A'}</div>
+                  </div>
+                </div>
+              </td></tr>
+            )}
+          </>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
