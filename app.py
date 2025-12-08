@@ -8,25 +8,15 @@ import nltk
 @st.cache_resource
 def download_nltk_data():
     try:
-        # Try newer punkt_tab first (NLTK 3.9+)
-        try:
-            nltk.data.find('tokenizers/punkt_tab')
-        except LookupError:
-            nltk.download('punkt_tab', quiet=True)
-        
-        # Fallback to older punkt
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            nltk.download('punkt', quiet=True)
-        
-        # Download other required data
-        for package in ['stopwords', 'wordnet', 'omw-1.4']:
+        packages = ['punkt', 'stopwords', 'wordnet', 'omw-1.4']
+        for package in packages:
             try:
-                nltk.data.find(f'corpora/{package}')
+                if package == 'punkt':
+                    nltk.data.find('tokenizers/punkt')
+                elif package in ['stopwords', 'wordnet', 'omw-1.4']:
+                    nltk.data.find(f'corpora/{package}')
             except LookupError:
                 nltk.download(package, quiet=True)
-        
         return True
     except Exception as e:
         st.error(f"Error downloading NLTK data: {e}")
