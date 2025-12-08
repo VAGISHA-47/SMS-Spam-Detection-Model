@@ -174,27 +174,28 @@ if st.button('Predict'):
                 if isinstance(steps, dict):
                     for key, value in steps.items():
                         st.write(f"**{key}**: {value}")
+                else:
+                    st.write(steps)
+            
+            # Save to database if configured
+            if DB_CONFIGURED:
+                try:
+                    save_prediction(
+                        st.session_state['user_email'],
+                        input_sms,
+                        transformed_sms,
+                        steps,
+                        int(result),
+                        label
+                    )
+                    st.success('Prediction saved to your history')
+                except Exception as e:
+                    st.error(f'Failed to save prediction to DB: {e}')
         except Exception as e:
             st.error(f"An error occurred during prediction. Please try again.")
             st.exception(e)
             # Try to ensure NLTK data is available
             download_nltk_data()
-            else:
-                st.write(steps)
-        
-        if DB_CONFIGURED:
-            try:
-                save_prediction(
-                    st.session_state['user_email'],
-                    input_sms,
-                    transformed_sms,
-                    steps,
-                    int(result),
-                    label
-                )
-                st.success('Prediction saved to your history')
-            except Exception as e:
-                st.error(f'Failed to save prediction to DB: {e}')
 
 # --- User History ---
 if DB_CONFIGURED:
