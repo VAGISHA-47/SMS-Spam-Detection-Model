@@ -7,8 +7,12 @@ import nltk
 # Download NLTK data with proper error handling
 @st.cache_resource
 def download_nltk_data():
+    """Download required NLTK data packages on startup."""
+    import sys
     try:
         packages = ['punkt', 'stopwords', 'wordnet', 'omw-1.4']
+        downloaded = []
+        
         for package in packages:
             try:
                 if package == 'punkt':
@@ -16,10 +20,16 @@ def download_nltk_data():
                 elif package in ['stopwords', 'wordnet', 'omw-1.4']:
                     nltk.data.find(f'corpora/{package}')
             except LookupError:
+                print(f"Downloading NLTK package: {package}", file=sys.stderr)
                 nltk.download(package, quiet=True)
+                downloaded.append(package)
+        
+        if downloaded:
+            print(f"Successfully downloaded: {', '.join(downloaded)}", file=sys.stderr)
         return True
     except Exception as e:
-        st.error(f"Error downloading NLTK data: {e}")
+        print(f"Error downloading NLTK data: {e}", file=sys.stderr)
+        # Don't fail, let individual functions handle missing data
         return False
 
 download_nltk_data()
@@ -142,27 +152,33 @@ if st.button('Predict'):
     if not input_sms or input_sms.strip() == "":
         st.warning("Please enter an SMS message to classify.")
     else:
-        steps = transform_text(input_sms)
-        if isinstance(steps, dict) and 'transformed' in steps:
-            transformed_sms = steps['transformed']
-        else:
-            transformed_sms = steps if isinstance(steps, str) else str(steps)
-            steps = {'transformed': transformed_sms}
-        
-        vector_input = tk.transform([transformed_sms])
-        result = model.predict(vector_input)[0]
-        label = 'spam' if int(result) == 1 else 'not_spam'
-        
-        if int(result) == 1:
-            st.error('Prediction: SPAM')
-        else:
-            st.success('Prediction: HAM (not spam)')
-        
-        # Show decoding steps
-        with st.expander('Show decoding steps'):
-            if isinstance(steps, dict):
-                for key, value in steps.items():
-                    st.write(f"**{key}**: {value}")
+        try:
+            steps = transform_text(input_sms)
+            if isinstance(steps, dict) and 'transformed' in steps:
+                transformed_sms = steps['transformed']
+            else:
+                transformed_sms = steps if isinstance(steps, str) else str(steps)
+                steps = {'transformed': transformed_sms}
+            
+            vector_input = tk.transform([transformed_sms])
+            result = model.predict(vector_input)[0]
+            label = 'spam' if int(result) == 1 else 'not_spam'
+            
+            if int(result) == 1:
+                st.error('Prediction: SPAM')
+            else:
+                st.success('Prediction: HAM (not spam)')
+            
+            # Show decoding steps
+            with st.expander('Show decoding steps'):
+                if isinstance(steps, dict):
+                    for key, value in steps.items():
+                        st.write(f"**{key}**: {value}")
+        except Exception as e:
+            st.error(f"An error occurred during prediction. Please try again.")
+            st.exception(e)
+            # Try to ensure NLTK data is available
+            download_nltk_data()
             else:
                 st.write(steps)
         

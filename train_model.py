@@ -51,7 +51,27 @@ def transform_text(text: str) -> str:
     toks = [t for t in tokens if t.isalnum()]
 
     # remove stopwords and punctuation
-    toks = [t for t in toks if t not in stopwords.words('english') and t not in string.punctuation]
+    try:
+        stop_words = stopwords.words('english')
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
+        try:
+            stop_words = stopwords.words('english')
+        except:
+            # Fallback: basic English stopwords
+            stop_words = {'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 
+                         'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+                         'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them',
+                         'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this',
+                         'that', 'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been',
+                         'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing',
+                         'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until',
+                         'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between',
+                         'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to',
+                         'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again',
+                         'further', 'then', 'once'}
+    
+    toks = [t for t in toks if t not in stop_words and t not in string.punctuation]
 
     # lemmatize then stem
     out = [ps.stem(lemmatizer.lemmatize(t)) for t in toks]
