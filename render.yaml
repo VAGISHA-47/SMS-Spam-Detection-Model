@@ -8,7 +8,7 @@ services:
     env: python
     branch: main
     plan: free
-    buildCommand: "pip install -r requirements.txt && python -m nltk.downloader punkt stopwords wordnet omw-1.4"
+    buildCommand: "pip install -r requirements.txt && python -m nltk.downloader punkt stopwords wordnet omw-1.4 && python train_model.py"
     startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
     envVars:
       - key: NEON_DB_URL
