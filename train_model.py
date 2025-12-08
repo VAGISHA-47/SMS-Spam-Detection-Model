@@ -11,10 +11,19 @@ from sklearn.metrics import classification_report, accuracy_score
 import pickle
 
 
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('omw-1.4')
+# Download NLTK data with error handling
+def ensure_nltk_data():
+    packages = ['punkt', 'stopwords', 'wordnet', 'omw-1.4']
+    for package in packages:
+        try:
+            if package == 'punkt':
+                nltk.data.find('tokenizers/punkt')
+            elif package in ['stopwords', 'wordnet', 'omw-1.4']:
+                nltk.data.find(f'corpora/{package}')
+        except LookupError:
+            nltk.download(package, quiet=True)
+
+ensure_nltk_data()
 
 
 ps = PorterStemmer()
@@ -25,7 +34,18 @@ def transform_text(text: str) -> str:
     if not isinstance(text, str):
         text = str(text)
     text = text.lower()
-    tokens = nltk.word_tokenize(text)
+    
+    # Try NLTK tokenizer, fallback to simple split
+    try:
+        tokens = nltk.word_tokenize(text)
+    except LookupError:
+        # If punkt data is missing, download and retry
+        nltk.download('punkt', quiet=True)
+        try:
+            tokens = nltk.word_tokenize(text)
+        except:
+            # Final fallback: simple split
+            tokens = text.split()
 
     # keep alphanumeric tokens
     toks = [t for t in tokens if t.isalnum()]
