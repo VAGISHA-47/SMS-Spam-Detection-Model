@@ -1,0 +1,16 @@
+# Optional Render service definition. Place at repo root and push to GitHub.
+# Render will detect this file and can create the service from it.
+# Adjust `name` and `envVars` as needed before pushing.
+
+services:
+  - type: web
+    name: sms-spam-detection
+    env: docker
+    branch: main
+    plan: free
+    buildCommand: ""
+    startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
+    envVars:
+      - key: MONGO_URI
+        value: ""
+        sync: false
