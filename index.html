@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMS Spam Detector</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: #f5f7fb;
+        color: #101828;
+      }
+      .container {
+        max-width: 900px;
+        margin: 32px auto;
+        background: #fff;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 6px 24px rgba(16, 24, 40, 0.08);
+      }
+      h1 { margin: 0 0 16px; font-size: 1.6rem; }
+      label { font-weight: 600; display: block; margin-bottom: 8px; }
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        border: 1px solid #d0d5dd;
+        border-radius: 10px;
+        padding: 12px;
+        box-sizing: border-box;
+        font-size: 14px;
+      }
+      .row { margin-top: 12px; display: flex; gap: 10px; }
+      button {
+        border: none;
+        background: #2563eb;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary { background: #475467; }
+      .result {
+        margin-top: 16px;
+        border: 1px solid #e4e7ec;
+        border-radius: 10px;
+        padding: 14px;
+        background: #f9fafb;
+      }
+      .ok { color: #067647; font-weight: 700; }
+      .spam { color: #b42318; font-weight: 700; }
+      .muted { color: #475467; font-size: 0.95rem; }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #fff;
+        border: 1px solid #eaecf0;
+        border-radius: 8px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>SMS Spam Detector</h1>
+      <p class="muted">Vercel deployment using static frontend + Python serverless API.</p>
+      <label for="sms">Enter SMS</label>
+      <textarea id="sms" placeholder="Type your message here..."></textarea>
+      <div class="row">
+        <button id="predictBtn">Predict</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+      <section id="result" class="result" style="display:none"></section>
+    </main>
+
+    <script>
+      const smsInput = document.getElementById('sms');
+      const predictBtn = document.getElementById('predictBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const resultBox = document.getElementById('result');
+
+      function renderResult(data) {
+        const isSpam = Number(data.prediction) === 1;
+        const probability = Array.isArray(data.probabilities) ? data.probabilities.map(v => Number(v).toFixed(3)).join(' / ') : 'N/A';
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `
+          <div><strong>Prediction:</strong> <span class="${isSpam ? 'spam' : 'ok'}">${isSpam ? 'SPAM' : 'HAM (not spam)'}</span></div>
+          <div><strong>Probabilities:</strong> ${probability}</div>
+          <div><strong>Transformed text:</strong></div>
+          <pre>${data.transformed || ''}</pre>
+        `;
+      }
+
+      async function predict() {
+        const text = smsInput.value.trim();
+        if (!text) {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = '<span class="spam">Please enter an SMS message.</span>';
+          return;
+        }
+
+        resultBox.style.display = 'block';
+        resultBox.textContent = 'Predicting...';
+
+        try {
+          const res = await fetch('/api/predict', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || 'Prediction failed');
+          }
+          renderResult(data);
+        } catch (err) {
+          resultBox.innerHTML = `<span class="spam">${err.message}</span>`;
+        }
+      }
+
+      predictBtn.addEventListener('click', predict);
+      clearBtn.addEventListener('click', () => {
+        smsInput.value = '';
+        resultBox.style.display = 'none';
+        resultBox.innerHTML = '';
+      });
+    </script>
+  </body>
+</html>
