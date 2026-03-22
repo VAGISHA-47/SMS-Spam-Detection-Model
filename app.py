@@ -65,6 +65,15 @@ def load_artifacts():
 setup_nltk()
 model, vectorizer = load_artifacts()
 
+
+def trigger_rerun() -> None:
+    """Rerun the app in a Streamlit-version-safe way."""
+    rerun_fn = getattr(st, "rerun", None)
+    if callable(rerun_fn):
+        rerun_fn()
+    else:
+        st.experimental_rerun()
+
 db_ready = True
 if not os.getenv("NEON_DB_URL"):
     db_ready = False
@@ -100,7 +109,7 @@ with st.sidebar:
                     if authenticate_user(email, password):
                         st.session_state["logged_in"] = True
                         st.session_state["user_email"] = email.strip().lower()
-                        st.experimental_rerun()
+                        trigger_rerun()
                     else:
                         st.error("Invalid credentials")
         else:
@@ -108,7 +117,7 @@ with st.sidebar:
             if st.button("Log out", key="logout_btn"):
                 st.session_state["logged_in"] = False
                 st.session_state["user_email"] = None
-                st.experimental_rerun()
+                trigger_rerun()
     else:
         st.info("Set NEON_DB_URL to enable accounts and history.")
 
